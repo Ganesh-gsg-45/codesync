@@ -1,0 +1,101 @@
+# ============================================================
+# CodeSync – Comprehensive .gitignore
+# ============================================================
+
+# ── Java / Maven ────────────────────────────────────────────
+target/
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+*.zip
+*.tar.gz
+*.rar
+hs_err_pid*
+replay_pid*
+
+# ── Spring Boot ─────────────────────────────────────────────
+application-local.yml
+application-local.yaml
+
+# ── Node.js / Frontend ──────────────────────────────────────
+node_modules/
+dist/
+build/
+.vite/
+.cache/
+*.tsbuildinfo
+
+# ── Package manager lock files (keep one, ignore others) ────
+# Uncomment whichever you DO NOT use:
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+
+# ── Environment / Secrets ───────────────────────────────────
+.env
+.env.local
+.env.*.local
+.env.production
+*.pem
+*.key
+*.p12
+*.jks
+
+# ── IDE – IntelliJ IDEA ─────────────────────────────────────
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# ── IDE – VS Code ───────────────────────────────────────────
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json.example
+
+# ── IDE – Eclipse ───────────────────────────────────────────
+.project
+.classpath
+.settings/
+.factorypath
+
+# ── OS ──────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# ── Data / H2 Database ──────────────────────────────────────
+data/
+backend/data/
+*.mv.db
+*.trace.db
+
+# ── Logs ────────────────────────────────────────────────────
+*.log
+logs/
+log/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ── Test / Coverage ─────────────────────────────────────────
+coverage/
+.nyc_output/
+test-results/
+surefire-reports/
+
+# ── Misc ────────────────────────────────────────────────────
+*.swp
+*.swo
+*~
+.temp/
+tmp/
