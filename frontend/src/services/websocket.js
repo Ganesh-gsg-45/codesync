@@ -21,8 +21,13 @@ class WebSocketService {
       onError,
     } = callbacks
 
-    // Auto-detect base URL for SockJS (supports custom VITE_WS_URL or relative /ws)
-    const wsUrl = import.meta.env.VITE_WS_URL || '/ws'
+    // Auto-detect base URL for SockJS (supports custom VITE_WS_URL, VITE_API_BASE_URL or relative /ws)
+    const rawWsUrl = import.meta.env.VITE_WS_URL || import.meta.env.VITE_API_BASE_URL
+    let wsUrl = '/ws'
+    if (rawWsUrl) {
+      const formatted = rawWsUrl.startsWith('http') ? rawWsUrl : `https://${rawWsUrl}`
+      wsUrl = formatted.endsWith('/ws') ? formatted : (formatted.endsWith('/api') ? formatted.replace(/\/api$/, '/ws') : `${formatted}/ws`)
+    }
 
     this.client = new Client({
       webSocketFactory: () => new SockJS(wsUrl),
