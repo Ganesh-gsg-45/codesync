@@ -74,7 +74,11 @@ public class SecurityConfig {
                 .map(String::trim)
                 .toList();
 
-        config.setAllowedOrigins(origins);
+        if (origins.contains("*")) {
+            config.setAllowedOriginPatterns(List.of("*"));
+        } else {
+            config.setAllowedOrigins(origins);
+        }
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Requested-With", "Accept", "Origin"));
         config.setExposedHeaders(List.of("Authorization", "Link", "X-Total-Count"));

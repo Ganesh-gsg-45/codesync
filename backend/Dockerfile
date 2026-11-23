@@ -17,8 +17,8 @@ WORKDIR /app
 # Copy built jar from build stage
 COPY --from=build /app/target/codesync-backend-*.jar app.jar
 
-# Create directory for H2 persistent data
-RUN mkdir -p /app/data
+# Create directory for H2 persistent data with full permissions
+RUN mkdir -p /app/data && chmod -R 777 /app/data
 
 EXPOSE 8080
 
