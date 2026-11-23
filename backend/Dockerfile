@@ -1,29 +1,24 @@
-# Build stage
-FROM eclipse-temurin:21-jdk-jammy AS build
+# Build stage using official Maven + Eclipse Temurin JDK 21
+FROM maven:3.9.6-eclipse-temurin-21-jammy AS build
 WORKDIR /app
 
-# Copy Maven wrapper & pom.xml
+# Copy pom.xml and dependencies
 COPY pom.xml .
-COPY .mvn-bin .mvn-bin
+RUN mvn dependency:go-offline -B || true
 
-# Copy source code and build
-COPY src src
-RUN ./.mvn-bin/apache-maven-3.9.6/bin/mvn clean package -DskipTests
+# Copy source code and build production jar
+COPY src ./src
+RUN mvn clean package -DskipTests
 
-# Runtime stage
+# Runtime stage using lightweight JRE 21
 FROM eclipse-temurin:21-jre-jammy
 WORKDIR /app
 
-# Create unprivileged user for security
-RUN groupadd -r spring && useradd -r -g spring spring
-
 # Copy built jar from build stage
-COPY --from=build /app/target/codesync-backend-1.0.0-SNAPSHOT.jar app.jar
+COPY --from=build /app/target/codesync-backend-*.jar app.jar
 
 # Create directory for H2 persistent data
-RUN mkdir -p /app/data && chown -R spring:spring /app
-
-USER spring:spring
+RUN mkdir -p /app/data
 
 EXPOSE 8080
 
