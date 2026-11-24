@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { FiX } from 'react-icons/fi'
 
 export default function Modal({
-  isOpen,
+  isOpen = true,
   onClose,
   title,
   children,
