@@ -24,9 +24,11 @@ class WebSocketService {
     // Auto-detect base URL for SockJS (supports custom VITE_WS_URL, VITE_API_BASE_URL or relative /ws)
     const rawWsUrl = import.meta.env.VITE_WS_URL || import.meta.env.VITE_API_BASE_URL
     let wsUrl = '/ws'
-    if (rawWsUrl) {
+    if (rawWsUrl && rawWsUrl !== 'undefined') {
       const formatted = rawWsUrl.startsWith('http') ? rawWsUrl : `https://${rawWsUrl}`
       wsUrl = formatted.endsWith('/ws') ? formatted : (formatted.endsWith('/api') ? formatted.replace(/\/api$/, '/ws') : `${formatted}/ws`)
+    } else if (typeof window !== 'undefined' && window.location.hostname.includes('onrender.com')) {
+      wsUrl = 'https://codesync-backend-tk8m.onrender.com/ws'
     }
 
     this.client = new Client({

@@ -1,11 +1,22 @@
 import axios from 'axios'
 
 const rawBaseUrl = import.meta.env.VITE_API_BASE_URL
-let apiBaseUrl = '/api'
-if (rawBaseUrl) {
-  const formatted = rawBaseUrl.startsWith('http') ? rawBaseUrl : `https://${rawBaseUrl}`
-  apiBaseUrl = formatted.endsWith('/api') ? formatted : `${formatted}/api`
+
+export function getApiBaseUrl() {
+  if (rawBaseUrl && rawBaseUrl !== 'undefined') {
+    const formatted = rawBaseUrl.startsWith('http') ? rawBaseUrl : `https://${rawBaseUrl}`
+    return formatted.endsWith('/api') ? formatted : `${formatted}/api`
+  }
+
+  // Automatic cloud fallback: when hosted on Render static CDN
+  if (typeof window !== 'undefined' && window.location.hostname.includes('onrender.com')) {
+    return 'https://codesync-backend-tk8m.onrender.com/api'
+  }
+
+  return '/api'
 }
+
+export const apiBaseUrl = getApiBaseUrl()
 
 const api = axios.create({
   baseURL: apiBaseUrl,

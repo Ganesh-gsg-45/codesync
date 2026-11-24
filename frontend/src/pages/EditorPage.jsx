@@ -745,7 +745,7 @@ export default function EditorPage() {
                   : 'bg-red-500'
               }`}
             />
-            <span>{connected ? 'ws://localhost:8080/ws' : 'Disconnected'}</span>
+            <span>{connected ? 'Sync Engine Live' : (reconnecting ? 'Reconnecting...' : 'Disconnected')}</span>
           </div>
           <span className="text-[#30363d]">|</span>
           <span>rev #{version}</span>

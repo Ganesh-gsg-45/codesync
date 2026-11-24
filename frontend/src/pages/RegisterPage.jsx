@@ -97,7 +97,7 @@ export default function RegisterPage() {
       console.error('Registration error:', err)
       let msg = ''
       if (!err?.response) {
-        msg = 'Connection Error: Unable to reach backend server at http://localhost:8080. Please ensure Spring Boot is running.'
+        msg = 'Connection Error: Unable to reach backend server. Please verify your internet connection or backend status.'
       } else if (err.response.status === 409) {
         msg = err.response.data?.message || 'Conflict: This username or email is already registered.'
       } else if (err.response.status === 400) {

@@ -56,7 +56,7 @@ export default function LoginPage() {
       console.error('Login error:', err)
       let msg = ''
       if (!err?.response) {
-        msg = 'Connection Error: Unable to reach backend server at http://localhost:8080. Please verify Spring Boot is running.'
+        msg = 'Connection Error: Unable to reach backend server. Please verify your internet connection or backend status.'
       } else if (err.response.status === 401) {
         msg = 'Authentication Error: Invalid email or password. Please verify your credentials or register.'
       } else if (err.response.status === 400) {
