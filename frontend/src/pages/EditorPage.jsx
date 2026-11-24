@@ -2,11 +2,13 @@ import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useEditor } from '../context/EditorContext'
-import { roomAPI, editorAPI } from '../services/api'
+import { roomAPI, editorAPI, fileAPI } from '../services/api'
 import { useWebSocket } from '../hooks/useWebSocket'
 import MonacoEditor from '../components/editor/MonacoEditor'
 import CursorMarker from '../components/editor/CursorMarker'
 import ParticipantList from '../components/editor/ParticipantList'
+import VSCodeMenuBar from '../components/editor/VSCodeMenuBar'
+import FileTreeExplorer from '../components/editor/FileTreeExplorer'
 import Badge from '../components/common/Badge'
 import Button from '../components/common/Button'
 import Modal from '../components/common/Modal'
@@ -34,6 +36,8 @@ import {
   FiUnlock,
   FiTerminal,
   FiZap,
+  FiX,
+  FiPlay,
 } from 'react-icons/fi'
 
 const LANGUAGES = [
@@ -70,7 +74,47 @@ export default function EditorPage() {
     setParticipants,
   } = useEditor()
 
-  const { connected, reconnecting, sendOperation, sendCursor, resync } = useWebSocket(roomId)
+  // Multi-file & folder workspace state
+  const [files, setFiles] = useState([])
+  const [openTabs, setOpenTabs] = useState([])
+  const [activeFileId, setActiveFileId] = useState(null)
+  const fileBuffers = useRef({})
+
+  const fetchFiles = useCallback(async () => {
+    if (!roomId) return
+    try {
+      const res = await fileAPI.getFiles(roomId)
+      const list = res.data || []
+      setFiles(list)
+
+      const regularFiles = list.filter((f) => !f.isFolder)
+      if (regularFiles.length > 0) {
+        setOpenTabs((prev) => {
+          if (prev.length === 0) return [regularFiles[0]]
+          return prev.map((t) => list.find((f) => f.id === t.id) || t)
+        })
+
+        setActiveFileId((currentId) => {
+          if (!currentId || !regularFiles.some((f) => f.id === currentId)) {
+            const initial = regularFiles[0]
+            updateContent(initial.content || '')
+            fileBuffers.current[initial.id] = initial.content || ''
+            if (initial.language) setLanguage(initial.language.toLowerCase())
+            return initial.id
+          }
+          return currentId
+        })
+      }
+    } catch (err) {
+      console.warn('Failed to load workspace files:', err)
+    }
+  }, [roomId, updateContent, setLanguage])
+
+  const { connected, reconnecting, sendOperation, sendCursor, resync } = useWebSocket(roomId, {
+    onFiles: () => {
+      fetchFiles()
+    },
+  })
 
   // Editor configuration state
   const [fontSize, setFontSize] = useState(14)
@@ -110,13 +154,130 @@ export default function EditorPage() {
 
   const isViewer = currentUserRole === 'VIEWER'
 
-  // Current file extension
+  // Current active file & fallback file name
+  const activeFile = useMemo(() => {
+    return files.find((f) => f.id === activeFileId) || openTabs.find((t) => t.id === activeFileId)
+  }, [files, openTabs, activeFileId])
+
   const currentLangObj = LANGUAGES.find((l) => l.id === language.toLowerCase()) || LANGUAGES[0]
-  const currentFileName = `main.${currentLangObj.ext}`
+  const currentFileName = activeFile?.name || `main.${currentLangObj.ext}`
+
+  // Switch active file tab
+  const switchActiveFile = useCallback(
+    (file) => {
+      if (file.isFolder) return
+
+      if (activeFileId) {
+        fileBuffers.current[activeFileId] = content
+      }
+
+      setOpenTabs((prev) => {
+        if (prev.some((t) => t.id === file.id)) return prev
+        return [...prev, file]
+      })
+
+      setActiveFileId(file.id)
+
+      const nextContent =
+        fileBuffers.current[file.id] != null ? fileBuffers.current[file.id] : file.content || ''
+      updateContent(nextContent)
+      fileBuffers.current[file.id] = nextContent
+
+      if (file.language) {
+        setLanguage(file.language.toLowerCase())
+      } else {
+        const ext = file.name.split('.').pop()
+        const matched = LANGUAGES.find((l) => l.ext === ext)
+        if (matched) setLanguage(matched.id)
+      }
+      setDirty(false)
+    },
+    [activeFileId, content, updateContent, setLanguage]
+  )
+
+  const handleCloseTab = useCallback(
+    (tabId, e) => {
+      if (e) e.stopPropagation()
+      setOpenTabs((prev) => {
+        const nextTabs = prev.filter((t) => t.id !== tabId)
+        if (activeFileId === tabId && nextTabs.length > 0) {
+          const nextActive = nextTabs[nextTabs.length - 1]
+          setTimeout(() => switchActiveFile(nextActive), 0)
+        }
+        return nextTabs
+      })
+    },
+    [activeFileId, switchActiveFile]
+  )
+
+  const handleCreateFile = useCallback(
+    async ({ name, path, isFolder }) => {
+      try {
+        const res = await fileAPI.createFile(roomId, { name, path, isFolder })
+        toast.success(`${isFolder ? 'Folder' : 'File'} "${name}" created!`)
+        await fetchFiles()
+        if (!isFolder) {
+          switchActiveFile(res.data)
+        }
+      } catch (err) {
+        toast.error(err?.response?.data?.message || 'Failed to create file')
+      }
+    },
+    [roomId, fetchFiles, switchActiveFile]
+  )
+
+  const handleDeleteFile = useCallback(
+    async (fileId) => {
+      try {
+        await fileAPI.deleteFile(roomId, fileId)
+        toast.success('File removed')
+        setOpenTabs((prev) => prev.filter((t) => t.id !== fileId))
+        await fetchFiles()
+      } catch (err) {
+        toast.error(err?.response?.data?.message || 'Failed to delete file')
+      }
+    },
+    [roomId, fetchFiles]
+  )
+
+  const handleDownloadFile = useCallback(() => {
+    const filename = activeFile?.name || currentFileName
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    link.click()
+    URL.revokeObjectURL(url)
+    toast.success(`Downloaded ${filename}`)
+  }, [activeFile, currentFileName, content])
+
+  const handleDownloadZip = useCallback(() => {
+    const jsonBundle = JSON.stringify(
+      files
+        .filter((f) => !f.isFolder)
+        .map((f) => ({
+          path: f.path,
+          content: fileBuffers.current[f.id] != null ? fileBuffers.current[f.id] : f.content,
+        })),
+      null,
+      2
+    )
+    const blob = new Blob([jsonBundle], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${roomInfo?.name || 'codesync-workspace'}.json`
+    link.click()
+    URL.revokeObjectURL(url)
+    toast.success('Project workspace exported!')
+  }, [files, roomInfo?.name])
 
   // 2. Load room metadata & initial document content on mount
   useEffect(() => {
     if (!roomId) return
+
+    fetchFiles()
 
     roomAPI
       .getRoom(roomId)
@@ -137,7 +298,7 @@ export default function EditorPage() {
     editorAPI
       .getContent(roomId)
       .then((res) => {
-        if (res.data?.content != null) {
+        if (res.data?.content != null && !activeFileId) {
           updateContent(res.data.content)
         }
         if (res.data?.version != null) {
@@ -147,7 +308,7 @@ export default function EditorPage() {
       .catch((err) => {
         console.warn('Initial document fetch fallback:', err)
       })
-  }, [roomId, setRoomInfo, setLanguage, updateContent, setVersion, setParticipants])
+  }, [roomId, setRoomInfo, setLanguage, updateContent, setVersion, setParticipants, fetchFiles, activeFileId])
 
   // 3. Handle editor changes → broadcast STOMP operation
   const handleEditorChange = useCallback(
@@ -159,12 +320,16 @@ export default function EditorPage() {
       if (value === content) return
       setDirty(true)
       updateContent(value)
+      if (activeFileId) {
+        fileBuffers.current[activeFileId] = value
+      }
       sendOperation({
         content: value,
         revision: version,
+        fileId: activeFileId,
       })
     },
-    [content, version, updateContent, sendOperation, isViewer]
+    [content, version, updateContent, sendOperation, isViewer, activeFileId]
   )
 
   // 4. Handle cursor movement
@@ -187,12 +352,19 @@ export default function EditorPage() {
         version,
         userId: user?.id,
       })
+      if (activeFileId) {
+        await fileAPI.updateFile(roomId, activeFileId, {
+          content,
+          language: language.toUpperCase(),
+        })
+        fileBuffers.current[activeFileId] = content
+      }
       setDirty(false)
-      toast.success('Document saved to persistent storage!')
+      toast.success(`Saved "${activeFile?.name || currentFileName}"!`)
       setActivityEvents((prev) => [
         {
           id: Date.now(),
-          text: `Document saved at revision #${version}`,
+          text: `Saved "${activeFile?.name || currentFileName}" (rev #${version})`,
           time: new Date().toLocaleTimeString(),
         },
         ...prev.slice(0, 15),
@@ -203,7 +375,7 @@ export default function EditorPage() {
     } finally {
       setSaving(false)
     }
-  }, [roomId, content, language, version, user?.id, isViewer])
+  }, [roomId, content, language, version, user?.id, isViewer, activeFileId, activeFile, currentFileName])
 
   // Keyboard shortcut Ctrl+S / Cmd+S for save
   useEffect(() => {
@@ -261,6 +433,49 @@ export default function EditorPage() {
       ref={containerRef}
       className="flex flex-col h-screen bg-[#0d1117] text-gray-100 overflow-hidden font-sans select-none"
     >
+      {/* ─── VS CODE NATIVE MENU BAR ───────────────────────────────── */}
+      <VSCodeMenuBar
+        roomName={roomInfo?.name || 'Workspace'}
+        activeFileName={activeFile?.name || currentFileName}
+        onNewFile={() => {
+          setLeftTab('files')
+          setShowLeftSidebar(true)
+          const name = window.prompt('Enter new file name (e.g. utils.js, styles.css):')
+          if (name && name.trim()) {
+            handleCreateFile({ name: name.trim(), path: name.trim(), isFolder: false })
+          }
+        }}
+        onNewFolder={() => {
+          setLeftTab('files')
+          setShowLeftSidebar(true)
+          const name = window.prompt('Enter new folder name (e.g. components, utils):')
+          if (name && name.trim()) {
+            handleCreateFile({ name: name.trim(), path: name.trim(), isFolder: true })
+          }
+        }}
+        onSave={handleSave}
+        onDownloadFile={handleDownloadFile}
+        onDownloadZip={handleDownloadZip}
+        onFormatDocument={() => {
+          if (editorRef.current) {
+            editorRef.current.getAction('editor.action.formatDocument')?.run()
+          }
+        }}
+        onFind={() => {
+          if (editorRef.current) {
+            editorRef.current.getAction('actions.find')?.run()
+          }
+        }}
+        onToggleLeftSidebar={() => setShowLeftSidebar((p) => !p)}
+        onToggleRightSidebar={() => setShowRightSidebar((p) => !p)}
+        onToggleFullscreen={toggleFullscreen}
+        isFullscreen={isFullscreen}
+        onRunCode={() => {
+          toast.success(`Executed ${activeFile?.name || currentFileName} (Simulated Output in Console)`)
+        }}
+        isViewer={isViewer}
+      />
+
       {/* ─── TOP IDE TOOLBAR ────────────────────────────────────────── */}
       <header className="h-14 flex items-center justify-between px-3 bg-[#161b22] border-b border-[#30363d] flex-shrink-0 z-20">
         {/* Left: Brand, Sidebar Toggles, Room Name & Code */}
@@ -492,33 +707,16 @@ export default function EditorPage() {
 
             {/* Tab Body: File Tree */}
             {leftTab === 'files' && (
-              <div className="flex-1 overflow-y-auto p-3 space-y-1">
-                <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
-                  Project Workspace
-                </p>
-                <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-blue-600/15 border border-blue-500/30 text-xs font-medium text-blue-300">
-                  <FiFileText className="w-3.5 h-3.5 text-blue-400" />
-                  <span className="font-mono">{currentFileName}</span>
-                  {dirty && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-400" />}
-                </div>
-
-                <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs font-medium text-gray-400 hover:bg-[#21262d] transition-colors cursor-not-allowed opacity-75">
-                  <FiFileText className="w-3.5 h-3.5 text-gray-500" />
-                  <span className="font-mono">README.md</span>
-                </div>
-
-                <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs font-medium text-gray-400 hover:bg-[#21262d] transition-colors cursor-not-allowed opacity-75">
-                  <FiCode className="w-3.5 h-3.5 text-gray-500" />
-                  <span className="font-mono">project.json</span>
-                </div>
-
-                <div className="pt-4 mt-4 border-t border-[#30363d]/60 px-2 text-[11px] text-gray-400">
-                  <p className="font-semibold text-gray-300 mb-1">Single-Buffer Synchronized</p>
-                  <p className="leading-relaxed">
-                    Collaborating concurrently on <code className="text-blue-400">{currentFileName}</code> over STOMP.
-                  </p>
-                </div>
-              </div>
+              <FileTreeExplorer
+                files={files}
+                activeFileId={activeFileId}
+                onSelectFile={switchActiveFile}
+                onCreateFile={handleCreateFile}
+                onDeleteFile={handleDeleteFile}
+                onRefresh={fetchFiles}
+                isViewer={isViewer}
+                roomName={roomInfo?.name || 'Workspace'}
+              />
             )}
 
             {/* Tab Body: Connected Participants */}
@@ -536,14 +734,38 @@ export default function EditorPage() {
 
         {/* CENTER: MONACO CODE EDITOR */}
         <main className="flex-1 flex flex-col overflow-hidden relative bg-[#1e1e1e]">
-          {/* Editor File Tab Header */}
-          <div className="h-9 flex items-center bg-[#161b22] border-b border-[#30363d] px-3 gap-2 flex-shrink-0">
-            <div className="flex items-center gap-2 px-3 py-1 bg-[#1e1e1e] border-t-2 border-blue-500 rounded-t text-xs font-mono text-gray-200">
-              <FiFileText className="w-3 h-3 text-blue-400" />
-              <span>{currentFileName}</span>
-              {dirty && <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />}
-            </div>
-            <div className="ml-auto flex items-center gap-2 text-xs text-gray-500 font-mono">
+          {/* Editor Multi-File Tab Header */}
+          <div className="h-9 flex items-center bg-[#161b22] border-b border-[#30363d] px-2 gap-1 flex-shrink-0 overflow-x-auto no-scrollbar">
+            {openTabs.map((tab) => {
+              const isActive = tab.id === activeFileId
+              return (
+                <div
+                  key={tab.id}
+                  onClick={() => switchActiveFile(tab)}
+                  className={`group flex items-center gap-2 px-3 py-1.5 rounded-t text-xs font-mono cursor-pointer border-t-2 transition-colors ${
+                    isActive
+                      ? 'bg-[#1e1e1e] border-blue-500 text-gray-200 font-semibold'
+                      : 'border-transparent text-gray-400 hover:bg-[#21262d] hover:text-gray-200'
+                  }`}
+                >
+                  <span className="truncate max-w-[140px]">{tab.name}</span>
+                  {tab.id === activeFileId && dirty && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0" />
+                  )}
+                  {openTabs.length > 1 && (
+                    <button
+                      onClick={(e) => handleCloseTab(tab.id, e)}
+                      title="Close Tab"
+                      className="p-0.5 rounded hover:bg-[#30363d] hover:text-white text-gray-500 transition-colors"
+                    >
+                      <FiX className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              )
+            })}
+            <div className="ml-auto flex items-center gap-3 pr-2 text-xs text-gray-500 font-mono">
+              <span className="hidden sm:inline">{activeFile?.path || currentFileName}</span>
               <span>rev #{version}</span>
             </div>
           </div>

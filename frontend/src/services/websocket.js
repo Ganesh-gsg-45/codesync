@@ -16,6 +16,7 @@ class WebSocketService {
       onPresence,
       onCursor,
       onSync,
+      onFiles,
       onConnected,
       onDisconnected,
       onError,
@@ -99,7 +100,20 @@ class WebSocketService {
           }
         )
 
-        this.subscriptions = [sub1, sub2, sub3, sub4]
+        // 5. Subscribe to files events (create/update/delete)
+        const sub5 = this.client.subscribe(
+          `/topic/room/${roomId}/files`,
+          (message) => {
+            try {
+              const payload = JSON.parse(message.body)
+              if (onFiles) onFiles(payload)
+            } catch (err) {
+              console.error('Error parsing files message:', err)
+            }
+          }
+        )
+
+        this.subscriptions = [sub1, sub2, sub3, sub4, sub5]
         if (onConnected) onConnected()
       },
 

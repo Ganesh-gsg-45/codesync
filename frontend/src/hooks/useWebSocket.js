@@ -16,7 +16,7 @@ function colorForUser(userId) {
   return USER_COLORS[Math.abs(hash) % USER_COLORS.length]
 }
 
-export function useWebSocket(roomId) {
+export function useWebSocket(roomId, extraCallbacks = {}) {
   const { token, user } = useAuth()
   const {
     updateContent,
@@ -137,6 +137,11 @@ export function useWebSocket(roomId) {
       onPresence: handlePresence,
       onCursor: handleCursor,
       onSync: handleSync,
+      onFiles: (payload) => {
+        if (extraCallbacks?.onFiles) {
+          extraCallbacks.onFiles(payload)
+        }
+      },
       onError: (err) => {
         console.error('WebSocket error:', err)
         setLocalConnected(false)

@@ -82,6 +82,14 @@ export const roomAPI = {
     api.delete(`/rooms/${roomId}/members/${userId}`),
 }
 
+// ─── File API ────────────────────────────────────────────────────────────────
+export const fileAPI = {
+  getFiles: (roomId) => api.get(`/rooms/${roomId}/files`),
+  createFile: (roomId, data) => api.post(`/rooms/${roomId}/files`, data),
+  updateFile: (roomId, fileId, data) => api.put(`/rooms/${roomId}/files/${fileId}`, data),
+  deleteFile: (roomId, fileId) => api.delete(`/rooms/${roomId}/files/${fileId}`),
+}
+
 // ─── Editor API ──────────────────────────────────────────────────────────────
 export const editorAPI = {
   getContent: (roomId) => api.get(`/editor/${roomId}/content`),
